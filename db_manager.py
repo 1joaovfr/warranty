@@ -317,6 +317,11 @@ def obter_estatisticas_garantia(filtros={}):
         return {}
 
 # --- FUNÇÃO ATUALIZADA PARA ACEITAR MAIS FILTROS ---
+# db_manager.py
+
+# ... (início do arquivo sem alterações) ...
+
+# --- FUNÇÃO ATUALIZADA PARA ACEITAR MAIS FILTROS ---
 def obter_estatisticas_ressarcimento(filtros={}):
     try:
         conn = sqlite3.connect(DB_NAME)
@@ -340,40 +345,43 @@ def obter_estatisticas_ressarcimento(filtros={}):
             condicoes.append("ig.codigo_produto = ?")
             params.append(filtros['produto'])
             
-        where_sql = " AND ".join(condicoes) if condicoes else "1=1"
+        where_sql = " WHERE " + " AND ".join(condicoes) if condicoes else ""
         
         query = f"""
-            SELECT 'Procedente' as categoria, COUNT(ig.id) as quantidade, SUM(CAST(ig.ressarcimento AS REAL)) as valor_total
-            {base_from} WHERE ig.procedente_improcedente = 'Procedente' AND CAST(ig.ressarcimento AS REAL) > 0 AND {where_sql}
-            UNION ALL
-            SELECT 'Improcedente' as categoria, COUNT(ig.id) as quantidade, SUM(CAST(ig.ressarcimento AS REAL)) as valor_total
-            {base_from} WHERE ig.procedente_improcedente = 'Improcedente' AND CAST(ig.ressarcimento AS REAL) > 0 AND {where_sql}
-            UNION ALL
-            SELECT 'Pendente' as categoria, COUNT(ig.id) as quantidade, SUM(ig.valor_item) as valor_total
-            {base_from} WHERE ig.status = 'Pendente de Análise' AND {where_sql}
+            SELECT
+                SUM(CASE WHEN ig.procedente_improcedente = 'Procedente' THEN CAST(ig.ressarcimento AS REAL) ELSE 0 END) as valor_procedente,
+                -- ALTERAÇÃO APLICADA AQUI: Adiciona a condição para contar apenas se o ressarcimento for maior que 0
+                COUNT(CASE WHEN ig.procedente_improcedente = 'Procedente' AND CAST(ig.ressarcimento AS REAL) > 0 THEN ig.id END) as qtd_procedente,
+
+                SUM(CASE WHEN ig.procedente_improcedente = 'Improcedente' THEN CAST(ig.ressarcimento AS REAL) ELSE 0 END) as valor_improcedente,
+                COUNT(CASE WHEN ig.procedente_improcedente = 'Improcedente' THEN ig.id END) as qtd_improcedente,
+
+                SUM(CASE WHEN ig.status = 'Pendente de Análise' THEN ig.valor_item ELSE 0 END) as valor_pendente,
+                COUNT(CASE WHEN ig.status = 'Pendente de Análise' THEN ig.id END) as qtd_pendente
+            {base_from}
+            {where_sql}
         """
         
-        final_params = params * 3
-        cursor.execute(query, final_params)
-        resultados = cursor.fetchall()
+        cursor.execute(query, params)
+        row = cursor.fetchone()
         conn.close()
         
-        estatisticas = {'Procedente': {'quantidade': 0, 'valor_total': 0}, 'Improcedente': {'quantidade': 0, 'valor_total': 0},'Pendente': {'quantidade': 0, 'valor_total': 0}}
-        for row in resultados:
-            cat = row['categoria']
-            if cat in estatisticas:
-                estatisticas[cat]['quantidade'] = row['quantidade'] or 0
-                estatisticas[cat]['valor_total'] = row['valor_total'] or 0
+        estatisticas = {
+            'Procedente': {'quantidade': row['qtd_procedente'] or 0, 'valor_total': row['valor_procedente'] or 0},
+            'Improcedente': {'quantidade': row['qtd_improcedente'] or 0, 'valor_total': row['valor_improcedente'] or 0},
+            'Pendente': {'quantidade': row['qtd_pendente'] or 0, 'valor_total': row['valor_pendente'] or 0}
+        }
         return estatisticas
     except sqlite3.Error as e:
         print(f"Erro ao obter estatísticas de ressarcimento: {e}")
-        return {}
-
-
+        return {'Procedente': {'quantidade': 0, 'valor_total': 0}, 'Improcedente': {'quantidade': 0, 'valor_total': 0}, 'Pendente': {'quantidade': 0, 'valor_total': 0}}
+    
 # =================================================================================
 # --- FUNÇÕES DE ESCRITA ---
-# (sem alterações)
 # =================================================================================
+
+# db_manager.py
+
 def salvar_nota_e_itens(cnpj, numero_nota, data_nota, itens):
     try:
         conn = sqlite3.connect(DB_NAME)
@@ -398,7 +406,12 @@ def salvar_nota_e_itens(cnpj, numero_nota, data_nota, itens):
                 else:
                     codigo_final = f"{letra_mes}{proximo_numero:03d}"
                     proximo_numero += 1
-                cursor.execute("INSERT INTO ItensGarantia (id_nota_fiscal, codigo_produto, valor_item, codigo_analise) VALUES (?, ?, ?, ?)",(id_nota_fiscal, item['codigo'], item['valor'], codigo_final))
+                
+                # Comando INSERT atualizado para incluir 'ressarcimento'
+                sql_insert = "INSERT INTO ItensGarantia (id_nota_fiscal, codigo_produto, valor_item, codigo_analise, ressarcimento) VALUES (?, ?, ?, ?, ?)"
+                params = (id_nota_fiscal, item['codigo'], item['valor'], codigo_final, item.get('ressarcimento'))
+                cursor.execute(sql_insert, params)
+        
         conn.commit()
         conn.close()
         return True, "Nota fiscal e itens salvos com sucesso!"
@@ -407,17 +420,28 @@ def salvar_nota_e_itens(cnpj, numero_nota, data_nota, itens):
         print(f"Erro ao salvar nota fiscal: {e}")
         return False, f"Erro ao salvar nota fiscal: {e}"
 
+# db_manager.py
+
 def salvar_analise_item(id_item, dados_analise):
     try:
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
+        # Query de UPDATE sem o campo 'ressarcimento'
         query = """
             UPDATE ItensGarantia SET
                 status = 'Analisado', codigo_analise = ?, numero_serie = ?,
                 codigo_avaria = ?, descricao_avaria = ?, procedente_improcedente = ?,
-                produzido_revenda = ?, fornecedor = ?, ressarcimento = ?
+                produzido_revenda = ?, fornecedor = ?
             WHERE id = ?"""
-        params = (dados_analise['codigo_analise'], dados_analise['numero_serie'], dados_analise['codigo_avaria'], dados_analise['descricao_avaria'], dados_analise['procedente_improcedente'], dados_analise['produzido_revenda'], dados_analise['fornecedor'], dados_analise['ressarcimento'], id_item)
+        
+        # Parâmetros sem o valor de ressarcimento
+        params = (
+            dados_analise['codigo_analise'], dados_analise['numero_serie'], 
+            dados_analise['codigo_avaria'], dados_analise['descricao_avaria'], 
+            dados_analise['procedente_improcedente'], dados_analise['produzido_revenda'], 
+            dados_analise['fornecedor'], 
+            id_item
+        )
         cursor.execute(query, params)
         conn.commit()
         conn.close()

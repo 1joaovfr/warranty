@@ -50,6 +50,8 @@ class App(ttkb.Window):
     # =================================================================================
     # --- ABAS 1, 2 e 3 (Omitidas para brevidade) ---
     # =================================================================================
+    # main.py
+
     def _criar_widgets_lancamento(self, parent_tab):
         main_frame = ttk.Frame(parent_tab)
         main_frame.pack(fill=BOTH, expand=YES)
@@ -74,30 +76,42 @@ class App(ttkb.Window):
         ttk.Label(dados_nota_frame, text="Data da Nota:").grid(row=1, column=2, padx=(20, 5), pady=5, sticky="w")
         self.data_nota_entry = ttkb.DateEntry(dados_nota_frame, bootstyle="primary", dateformat="%d/%m/%Y")
         self.data_nota_entry.grid(row=1, column=3, padx=5, pady=5, sticky="ew")
-        self.data_nota_entry.button.configure(command=lambda: self._abrir_calendario_posicionado(self.data_nota_entry))
+
+        # --- ALTERAÇÃO APLICADA AQUI ---
+        # Em vez de substituir o comando, nós "escutamos" o clique do mouse
+        # para então chamar a função de posicionar o popup.
+        self.data_nota_entry.button.bind("<Button-1>", lambda event: self.after(10, lambda: self._posicionar_popup(self.data_nota_entry)))
+
         add_item_frame = ttk.LabelFrame(main_frame, text="Adicionar Itens à Nota", padding=15)
         add_item_frame.pack(fill=X, pady=10)
         ttk.Label(add_item_frame, text="Cód. Item:").pack(side=LEFT, padx=(0, 5))
-        self.item_entry = ttk.Entry(add_item_frame, width=20)
+        self.item_entry = ttk.Entry(add_item_frame, width=15)
         self.item_entry.pack(side=LEFT, fill=X, expand=YES, padx=5)
         ttk.Label(add_item_frame, text="Quantidade:").pack(side=LEFT, padx=(15, 5))
-        self.qtd_entry = ttk.Entry(add_item_frame, width=10)
+        self.qtd_entry = ttk.Entry(add_item_frame, width=8)
         self.qtd_entry.pack(side=LEFT, fill=X, expand=YES, padx=5)
         ttk.Label(add_item_frame, text="Valor Unitário:").pack(side=LEFT, padx=(15, 5))
-        self.valor_entry = ttk.Entry(add_item_frame, width=15)
+        self.valor_entry = ttk.Entry(add_item_frame, width=10)
         self.valor_entry.pack(side=LEFT, fill=X, expand=YES, padx=5)
+        self.ressarc_check_var = tk.BooleanVar()
+        self.ressarc_check = ttk.Checkbutton(add_item_frame, text="Ressarcimento?", variable=self.ressarc_check_var, command=self._toggle_ressarcimento_entry, bootstyle="primary")
+        self.ressarc_check.pack(side=LEFT, padx=(20, 5))
+        self.ressarc_label = ttk.Label(add_item_frame, text="Valor Ressarc:")
+        self.ressarc_entry = ttk.Entry(add_item_frame, width=10)
         self.add_item_button = ttk.Button(add_item_frame, text="Adicionar Item", command=self.adicionar_item_lista, bootstyle="success")
         self.add_item_button.pack(side=RIGHT, padx=(20, 0))
         lista_itens_frame = ttk.LabelFrame(main_frame, text="Itens da Nota", padding=15)
         lista_itens_frame.pack(fill=BOTH, expand=YES, pady=10)
-        colunas = ("codigo", "quantidade", "valor_unit")
+        colunas = ("codigo", "quantidade", "valor_unit", "ressarcimento")
         self.tree_lancamento = ttk.Treeview(lista_itens_frame, columns=colunas, show="headings")
         self.tree_lancamento.heading("codigo", text="Código do Item")
         self.tree_lancamento.heading("quantidade", text="Quantidade")
         self.tree_lancamento.heading("valor_unit", text="Valor Unitário")
-        self.tree_lancamento.column("codigo", anchor=CENTER)
-        self.tree_lancamento.column("quantidade", anchor=CENTER)
-        self.tree_lancamento.column("valor_unit", anchor=CENTER)
+        self.tree_lancamento.heading("ressarcimento", text="Ressarcimento")
+        self.tree_lancamento.column("codigo", anchor=CENTER, width=120)
+        self.tree_lancamento.column("quantidade", anchor=CENTER, width=80)
+        self.tree_lancamento.column("valor_unit", anchor=CENTER, width=100)
+        self.tree_lancamento.column("ressarcimento", anchor=CENTER, width=100)
         self.tree_lancamento.pack(side=LEFT, fill=BOTH, expand=YES)
         acoes_frame = ttk.Frame(main_frame)
         acoes_frame.pack(fill=X, pady=(10, 0))
@@ -105,6 +119,7 @@ class App(ttkb.Window):
         self.save_button.pack(side=RIGHT, padx=5)
         self.clear_button = ttk.Button(acoes_frame, text="Limpar Campos", command=self.limpar_tela_lancamento, bootstyle="secondary-outline")
         self.clear_button.pack(side=RIGHT, padx=5)
+    
     def buscar_cliente_por_cnpj(self, event=None):
         cnpj = self.cnpj_entry.get().strip()
         if not cnpj: return
@@ -114,10 +129,12 @@ class App(ttkb.Window):
         self.razao_social_entry.delete(0, END)
         self.razao_social_entry.insert(0, nome_cliente)
         self.razao_social_entry.config(state="readonly")
+
     def adicionar_item_lista(self):
         codigo = self.item_entry.get().strip()
         qtd_str = self.qtd_entry.get().strip()
         valor_str = self.valor_entry.get().strip().replace(',', '.')
+        
         if not all([codigo, qtd_str, valor_str]):
             Messagebox.show_error("Preencha todos os campos do item.", "Erro de Validação")
             return
@@ -127,13 +144,45 @@ class App(ttkb.Window):
         try:
             qtd = int(qtd_str)
             valor = float(valor_str)
+            
+            # --- LÓGICA DO RESSARCIMENTO ---
+            ressarcimento = 0.0
+            ressarcimento_str = "-"
+            if self.ressarc_check_var.get():
+                ressarc_val_str = self.ressarc_entry.get().strip().replace(',', '.')
+                if not ressarc_val_str:
+                    Messagebox.show_error("O valor de ressarcimento deve ser preenchido.", "Erro de Validação")
+                    return
+                ressarcimento = float(ressarc_val_str)
+                ressarcimento_str = f"R$ {ressarcimento:.2f}"
+            # --- FIM DA LÓGICA ---
+
         except ValueError:
-            Messagebox.show_error("Quantidade e Valor devem ser números.", "Erro de Validação")
+            Messagebox.show_error("Quantidade e Valores devem ser números.", "Erro de Validação")
             return
-        self.tree_lancamento.insert("", END, values=(codigo, f"{qtd}", f"{valor:.2f}"))
-        self.itens_nota.append({"codigo": codigo, "quantidade": qtd, "valor": valor})
-        self.item_entry.delete(0, END); self.qtd_entry.delete(0, END); self.valor_entry.delete(0, END)
+            
+        valor_unit_str = f"R$ {valor:.2f}"
+        self.tree_lancamento.insert("", END, values=(codigo, f"{qtd}", valor_unit_str, ressarcimento_str))
+        self.itens_nota.append({"codigo": codigo, "quantidade": qtd, "valor": valor, "ressarcimento": ressarcimento if self.ressarc_check_var.get() else None})
+        
+        # Limpar campos
+        self.item_entry.delete(0, END)
+        self.qtd_entry.delete(0, END)
+        self.valor_entry.delete(0, END)
+        self.ressarc_entry.delete(0, END)
+        self.ressarc_check_var.set(False)
+        self._toggle_ressarcimento_entry()
         self.item_entry.focus()
+
+    def _toggle_ressarcimento_entry(self):
+        if self.ressarc_check_var.get():
+            self.ressarc_label.pack(side=LEFT, padx=(15, 5))
+            self.ressarc_entry.pack(side=LEFT, fill=X, expand=YES, padx=5)
+        else:
+            self.ressarc_label.pack_forget()
+            self.ressarc_entry.pack_forget()
+            self.ressarc_entry.delete(0, END)
+
     def salvar_nota_fiscal(self):
         cnpj = self.cnpj_entry.get().strip()
         if not db_manager.buscar_cliente_por_cnpj(cnpj):
@@ -152,15 +201,24 @@ class App(ttkb.Window):
             self.aplicar_filtros()
             self._atualizar_aba_gestao()
         else: Messagebox.show_error(mensagem, "Erro ao Guardar")
+
+
+
     def limpar_tela_lancamento(self):
         self.empresa_combo.set(''); self.cnpj_entry.delete(0, END); self.num_nota_entry.delete(0, END)
         self.razao_social_entry.config(state="normal"); self.razao_social_entry.delete(0, END); self.razao_social_entry.config(state="readonly")
         for i in self.tree_lancamento.get_children(): self.tree_lancamento.delete(i)
         self.itens_nota.clear()
+        
+        # Limpar e resetar campos de ressarcimento
+        self.ressarc_entry.delete(0, END)
+        self.ressarc_check_var.set(False)
+        self._toggle_ressarcimento_entry()
+
         self.cnpj_entry.focus()
-    def _abrir_calendario_posicionado(self, date_entry_widget):
-        date_entry_widget._show_calendar()
-        self.after(10, lambda: self._posicionar_popup(date_entry_widget))
+
+
+        
     def _posicionar_popup(self, date_entry_widget):
         try:
             calendario_popup = date_entry_widget.calendar
@@ -172,11 +230,14 @@ class App(ttkb.Window):
             calendario_popup.geometry(f'+{nova_pos_x}+{nova_pos_y}')
         except (AttributeError, tk.TclError):
             pass
+
+
     def _criar_widgets_analise(self, parent_tab):
+        # ... (código do 'lista_frame' e 'tree_analise' continua igual) ...
         lista_frame = ttk.LabelFrame(parent_tab, text="Itens Pendentes de Análise", padding=15)
         lista_frame.pack(fill=X, pady=(0, 10))
         cols = ("id", "analise", "nota", "cliente", "produto", "data")
-        self.tree_analise = ttk.Treeview(lista_frame, columns=cols, show="headings", height=8)
+        self.tree_analise = ttk.Treeview(lista_frame, columns=cols, show="headings", height=12)
         self.tree_analise.heading("id", text="ID")
         self.tree_analise.heading("analise", text="Cód. Análise")
         self.tree_analise.heading("nota", text="Nº Nota")
@@ -194,6 +255,7 @@ class App(ttkb.Window):
         v_scroll.pack(side=RIGHT, fill=Y)
         self.tree_analise.pack(side=LEFT, fill=BOTH, expand=YES)
         self.tree_analise.bind("<<TreeviewSelect>>", self.on_item_analise_select)
+
         self.form_analise_frame = ttk.LabelFrame(parent_tab, text="Formulário de Análise", padding=15)
         self.form_analise_frame.pack(fill=BOTH, expand=YES)
         self.form_analise_frame.columnconfigure(1, weight=1); self.form_analise_frame.columnconfigure(3, weight=1)
@@ -218,18 +280,20 @@ class App(ttkb.Window):
         ttk.Label(self.form_analise_frame, text="Fornecedor:").grid(row=3, column=2, padx=5, pady=5, sticky="w")
         self.analise_fornecedor_entry = ttk.Entry(self.form_analise_frame)
         self.analise_fornecedor_entry.grid(row=3, column=3, padx=5, pady=5, sticky="ew")
-        ttk.Label(self.form_analise_frame, text="Ressarcimento:").grid(row=4, column=0, padx=5, pady=5, sticky="w")
-        self.analise_ressarcimento_entry = ttk.Entry(self.form_analise_frame)
-        self.analise_ressarcimento_entry.grid(row=4, column=1, padx=5, pady=5, sticky="ew")
+        
+        # --- CAMPO DE RESSARCIMENTO REMOVIDO DAQUI ---
+
         self.save_analise_button = ttk.Button(self.form_analise_frame, text="Guardar Análise", command=self.salvar_analise, bootstyle="primary")
-        self.save_analise_button.grid(row=5, column=3, padx=5, pady=20, sticky="e")
+        self.save_analise_button.grid(row=4, column=3, padx=5, pady=20, sticky="e") # A linha (row) foi ajustada para 4
         self.set_form_analise_state("disabled")
+
     def carregar_itens_pendentes(self):
         for i in self.tree_analise.get_children(): self.tree_analise.delete(i)
         itens = db_manager.buscar_itens_pendentes()
         for item in itens:
             data_formatada = datetime.strptime(item['data_nota'], '%Y-%m-%d').strftime('%d/%m/%Y')
             self.tree_analise.insert("", END, values=(item['id'], item['codigo_analise'], item['numero_nota'], item['nome_cliente'], item['codigo_produto'], data_formatada))
+
     def on_item_analise_select(self, event=None):
         selecionado = self.tree_analise.focus()
         if not selecionado: return
@@ -243,6 +307,7 @@ class App(ttkb.Window):
         self.analise_cod_entry.config(state="readonly")
         self.form_analise_frame.config(text=f"Formulário de Análise - Item ID: {self.id_item_selecionado}")
         self.set_form_analise_state("normal")
+        
     def atualizar_status_procedencia(self, event=None):
         cod_avaria = self.analise_avaria_combo.get()
         if not cod_avaria: return
@@ -256,13 +321,26 @@ class App(ttkb.Window):
         if classificacao == "Procedente": self.analise_status_label.config(bootstyle="success")
         elif classificacao == "Improcedente": self.analise_status_label.config(bootstyle="danger")
         else: self.analise_status_label.config(bootstyle="default")
+
+
     def salvar_analise(self):
         if not self.id_item_selecionado: return
         cod_avaria_selecionado = self.analise_avaria_combo.get()
         if not cod_avaria_selecionado:
             Messagebox.show_error("Selecione um código de avaria.", "Erro de Validação")
             return
-        dados = {'codigo_analise': self.analise_cod_entry.get(), 'numero_serie': self.analise_serie_entry.get(), 'codigo_avaria': cod_avaria_selecionado, 'descricao_avaria': self.analise_desc_avaria_entry.get(), 'procedente_improcedente': self.codigos_avaria_map.get(cod_avaria_selecionado, {}).get('classificacao'), 'produzido_revenda': self.analise_origem_combo.get(), 'fornecedor': self.analise_fornecedor_entry.get(), 'ressarcimento': self.analise_ressarcimento_entry.get()}
+        
+        # O campo 'ressarcimento' foi removido do dicionário de dados
+        dados = {
+            'codigo_analise': self.analise_cod_entry.get(), 
+            'numero_serie': self.analise_serie_entry.get(), 
+            'codigo_avaria': cod_avaria_selecionado, 
+            'descricao_avaria': self.analise_desc_avaria_entry.get(), 
+            'procedente_improcedente': self.codigos_avaria_map.get(cod_avaria_selecionado, {}).get('classificacao'), 
+            'produzido_revenda': self.analise_origem_combo.get(), 
+            'fornecedor': self.analise_fornecedor_entry.get()
+        }
+        
         sucesso, msg = db_manager.salvar_analise_item(self.id_item_selecionado, dados)
         if sucesso:
             Messagebox.show_info(msg, "Sucesso")
@@ -272,6 +350,7 @@ class App(ttkb.Window):
             self._atualizar_aba_gestao()
         else:
             Messagebox.show_error(msg, "Erro")
+
     def set_form_analise_state(self, state):
         for widget in self.form_analise_frame.winfo_children():
             try:
@@ -281,13 +360,14 @@ class App(ttkb.Window):
                     widget.config(state=state)
             except tk.TclError:
                 pass
+
     def limpar_form_analise(self):
         self.id_item_selecionado = None
         self.form_analise_frame.config(text="Formulário de Análise")
         self.analise_cod_entry.config(state="normal")
         self.analise_cod_entry.delete(0, END)
         self.analise_cod_entry.config(state="readonly")
-        entries = [self.analise_serie_entry, self.analise_fornecedor_entry, self.analise_ressarcimento_entry]
+        entries = [self.analise_serie_entry, self.analise_fornecedor_entry]
         for entry in entries: entry.delete(0, END)
         self.analise_desc_avaria_entry.config(state="normal")
         self.analise_desc_avaria_entry.delete(0, END)
@@ -295,6 +375,7 @@ class App(ttkb.Window):
         for combo in [self.analise_avaria_combo, self.analise_origem_combo]: combo.set('')
         self.analise_status_label.config(text="Status: -", bootstyle="default")
         self.set_form_analise_state("disabled")
+
     def _criar_widgets_visualizacao(self, parent_tab):
         filtros_frame = ttk.LabelFrame(parent_tab, text="Filtros de Pesquisa", padding=15)
         filtros_frame.pack(fill=X, pady=(0, 10))
@@ -338,6 +419,7 @@ class App(ttkb.Window):
         self.btn_excluir.pack(side=RIGHT, padx=5)
         self.btn_editar = ttk.Button(acoes_vis_frame, text="Editar Selecionado", command=self.editar_item_selecionado, bootstyle="info")
         self.btn_editar.pack(side=RIGHT, padx=5)
+
     def aplicar_filtros(self):
         filtros = { 'cnpj': self.filtro_cnpj.get().strip(), 'razao_social': self.filtro_razao.get().strip(), 'numero_nota': self.filtro_nota.get().strip(), 'status': self.filtro_status.get() }
         for i in self.tree_visualizacao.get_children(): self.tree_visualizacao.delete(i)
@@ -348,8 +430,10 @@ class App(ttkb.Window):
             procedencia = item['procedente_improcedente'] or '-'
             valor_str = f"R$ {item['valor_item']:.2f}" if item['valor_item'] is not None else '-'
             self.tree_visualizacao.insert("", END, values=(item['id'], item['numero_nota'], data_formatada, item['cnpj'], item['nome_cliente'], codigo_analise, item['codigo_produto'], valor_str, item['status'], procedencia))
+            
     def limpar_filtros(self):
         self.filtro_cnpj.delete(0, END); self.filtro_razao.delete(0, END); self.filtro_nota.delete(0, END); self.filtro_status.set("Todos"); self.aplicar_filtros()
+
     def excluir_item_selecionado(self):
         selecionados = self.tree_visualizacao.selection()
         if not selecionados:
@@ -485,22 +569,48 @@ class App(ttkb.Window):
         self.label_total_valor = ttk.Label(stats_frame, text="Valor Total: R$ -")
         self.label_total_valor.pack(anchor='w', padx=10)
 
+# main.py
+
+# ... (início do arquivo) ...
+
     def _criar_dashboard_ressarcimento(self, parent_frame):
-        self.frame_grafico_ressarcimento_canvas = ttk.LabelFrame(parent_frame, text="Distribuição de Ressarcimentos", padding=15)
+        self.frame_grafico_ressarcimento_canvas = ttk.LabelFrame(parent_frame, text="Distribuição de Ressarcimentos por Valor", padding=15)
         self.frame_grafico_ressarcimento_canvas.pack(side=LEFT, fill=BOTH, expand=YES, padx=(0, 10))
+        
         stats_frame = ttk.LabelFrame(parent_frame, text="Resumo de Valores de Ressarcimento", padding=15)
         stats_frame.pack(side=RIGHT, fill=Y, ipadx=10)
-        ttk.Label(stats_frame, text="Ressarcimentos Obtidos (Procedente)", font=("Helvetica", 12, "bold"), foreground="#28a745").pack(anchor='w', pady=(0, 5))
+
+        # --- Procedentes ---
+        ttk.Label(stats_frame, text="Procedentes", font=("Helvetica", 12, "bold"), foreground="#28a745").pack(anchor='w', pady=(0, 5))
         self.label_ressarc_proc_qtd = ttk.Label(stats_frame, text="Quantidade: -")
         self.label_ressarc_proc_qtd.pack(anchor='w', padx=10)
         self.label_ressarc_proc_valor = ttk.Label(stats_frame, text="Valor Total: R$ -")
         self.label_ressarc_proc_valor.pack(anchor='w', padx=10, pady=(0, 15))
-        ttk.Label(stats_frame, text="Análise Pendente (Valor Potencial)", font=("Helvetica", 12, "bold"), foreground="#6c757d").pack(anchor='w', pady=(0, 5))
+
+        # --- Improcedentes ---
+        ttk.Label(stats_frame, text="Improcedentes", font=("Helvetica", 12, "bold"), foreground="#dc3545").pack(anchor='w', pady=(0, 5))
+        self.label_ressarc_improc_qtd = ttk.Label(stats_frame, text="Quantidade: -")
+        self.label_ressarc_improc_qtd.pack(anchor='w', padx=10)
+        self.label_ressarc_improc_valor = ttk.Label(stats_frame, text="Valor Total: R$ -")
+        self.label_ressarc_improc_valor.pack(anchor='w', padx=10, pady=(0, 15))
+
+        # --- Pendentes ---
+        ttk.Label(stats_frame, text="Pendentes de Análise", font=("Helvetica", 12, "bold"), foreground="#6c757d").pack(anchor='w', pady=(0, 5))
         self.label_ressarc_pend_qtd = ttk.Label(stats_frame, text="Quantidade: -")
         self.label_ressarc_pend_qtd.pack(anchor='w', padx=10)
         self.label_ressarc_pend_valor = ttk.Label(stats_frame, text="Valor Potencial: R$ -")
         self.label_ressarc_pend_valor.pack(anchor='w', padx=10, pady=(0, 15))
 
+        # --- Separador e Totais ---
+        ttk.Separator(stats_frame, orient=HORIZONTAL).pack(fill=X, pady=10)
+        ttk.Label(stats_frame, text="Total Recebido", font=("Helvetica", 12, "bold"), foreground="#17a2b8").pack(anchor='w', pady=(0, 5))
+        self.label_total_ressarc_qtd = ttk.Label(stats_frame, text="Quantidade Total: -")
+        self.label_total_ressarc_qtd.pack(anchor='w', padx=10)
+        self.label_total_ressarc_valor = ttk.Label(stats_frame, text="Valor Total: R$ -")
+        self.label_total_ressarc_valor.pack(anchor='w', padx=10)
+
+# ... (restante do arquivo) ...
+# ... (restante do arquivo) ...
     def _mostrar_view_tabela(self):
         self.frame_dashboard_geral_gestao.pack_forget()
         self.frame_dashboard_ressarcimento_gestao.pack_forget()
@@ -523,6 +633,21 @@ class App(ttkb.Window):
         self.btn_ver_dashboard.config(bootstyle="info-outline")
         self.btn_ver_ressarcimento.config(bootstyle="success")
 
+    def _get_filtros_gestao(self):
+        ano = self.combo_ano_gestao.get()
+        mes_str = self.combo_mes_gestao.get()
+        cliente = self.combo_cliente_gestao.get()
+        produto = self.combo_produto_gestao.get()
+        
+        filtros = {}
+        if ano and ano != "Todos": filtros['ano'] = ano
+        if mes_str and mes_str != "Todos":
+            mes_map = {"Janeiro": "01", "Fevereiro": "02", "Março": "03", "Abril": "04", "Maio": "05", "Junho": "06", "Julho": "07", "Agosto": "08", "Setembro": "09", "Outubro": "10", "Novembro": "11", "Dezembro": "12"}
+            filtros['mes'] = mes_map.get(mes_str)
+        if cliente and cliente != "Todos": filtros['cliente'] = cliente
+        if produto and produto != "Todos": filtros['produto'] = produto
+        return filtros
+    
     def _atualizar_aba_gestao(self):
         filtros = self._get_filtros_gestao()
         self._carregar_dados_tabela_gestao(filtros)
@@ -569,45 +694,61 @@ class App(ttkb.Window):
         canvas.draw()
         canvas.get_tk_widget().pack(fill=BOTH, expand=YES)
         
+# main.py
+
+# ... (início do arquivo) ...
+        
     def _desenhar_grafico_ressarcimento(self, filtros):
         for widget in self.frame_grafico_ressarcimento_canvas.winfo_children():
             widget.destroy()
+            
         stats = db_manager.obter_estatisticas_ressarcimento(filtros)
+        
+        # Extrai os valores e quantidades
         proc_qtd, proc_val = stats['Procedente']['quantidade'], stats['Procedente']['valor_total']
+        improc_qtd, improc_val = stats['Improcedente']['quantidade'], stats['Improcedente']['valor_total']
         pend_qtd, pend_val = stats['Pendente']['quantidade'], stats['Pendente']['valor_total']
+        
+        # Calcula os totais (somente com itens que têm ou podem ter ressarcimento)
+        total_qtd = proc_qtd + pend_qtd # ALTERAÇÃO APLICADA AQUI
+        total_val = proc_val + improc_val + pend_val
+        
+        # Atualiza os labels de resumo
         self.label_ressarc_proc_qtd.config(text=f"Quantidade: {proc_qtd}")
         self.label_ressarc_proc_valor.config(text=f"Valor Total: R$ {proc_val:.2f}")
+        
+        self.label_ressarc_improc_qtd.config(text=f"Quantidade: {improc_qtd}")
+        self.label_ressarc_improc_valor.config(text=f"Valor Total: R$ {improc_val:.2f}")
+        
         self.label_ressarc_pend_qtd.config(text=f"Quantidade: {pend_qtd}")
         self.label_ressarc_pend_valor.config(text=f"Valor Potencial: R$ {pend_val:.2f}")
-        labels, sizes, colors = ['Ressarcido', 'Pendente (Potencial)'], [proc_val, pend_val], ['#28a745', '#ffc107']
+
+        self.label_total_ressarc_qtd.config(text=f"Quantidade Total: {total_qtd}")
+        self.label_total_ressarc_valor.config(text=f"Valor Total: R$ {total_val:.2f}")
+
+        # Prepara os dados para o gráfico (continua baseado nos VALORES)
+        labels = ['Procedentes', 'Improcedentes', 'Pendentes (Potencial)']
+        sizes = [proc_val, improc_val, pend_val]
+        colors = ['#28a745', '#dc3545', '#ffc107']
+        
         non_zero_data = [(size, label, color) for size, label, color in zip(sizes, labels, colors) if size > 0]
+        
         if not non_zero_data:
-            ttk.Label(self.frame_grafico_ressarcimento_canvas, text="Não há dados para exibir.").pack(pady=20)
+            ttk.Label(self.frame_grafico_ressarcimento_canvas, text="Não há dados de ressarcimento para exibir.").pack(pady=20)
             return
+            
         sizes, labels, colors = zip(*non_zero_data)
+        
         fig, ax = plt.subplots(figsize=(6, 6), dpi=100)
         fig.patch.set_facecolor('#f0f0f0')
         ax.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90, wedgeprops={'edgecolor': 'white'})
         ax.axis('equal')
+        
         canvas = FigureCanvasTkAgg(fig, master=self.frame_grafico_ressarcimento_canvas)
         canvas.draw()
         canvas.get_tk_widget().pack(fill=BOTH, expand=YES)
-        
-    def _get_filtros_gestao(self):
-        ano = self.combo_ano_gestao.get()
-        mes_str = self.combo_mes_gestao.get()
-        cliente = self.combo_cliente_gestao.get()
-        produto = self.combo_produto_gestao.get()
-        
-        filtros = {}
-        if ano and ano != "Todos": filtros['ano'] = ano
-        if mes_str and mes_str != "Todos":
-            mes_map = {"Janeiro": "01", "Fevereiro": "02", "Março": "03", "Abril": "04", "Maio": "05", "Junho": "06", "Julho": "07", "Agosto": "08", "Setembro": "09", "Outubro": "10", "Novembro": "11", "Dezembro": "12"}
-            filtros['mes'] = mes_map.get(mes_str)
-        if cliente and cliente != "Todos": filtros['cliente'] = cliente
-        if produto and produto != "Todos": filtros['produto'] = produto
-        return filtros
 
+# ... (restante do arquivo) ...
     def _populate_filtros_gestao(self):
         self.combo_ano_gestao['values'] = ["Todos"] + db_manager.obter_anos_disponiveis()
         self.combo_ano_gestao.set("Todos")
@@ -640,6 +781,8 @@ class App(ttkb.Window):
         self._atualizar_aba_gestao()
 
 # ... (CLASSE EDITORWINDOW COMPLETA AQUI) ...
+# main.py
+
 class EditorWindow(tk.Toplevel):
     def __init__(self, parent, id_item, avaria_map):
         super().__init__(parent)
@@ -647,7 +790,7 @@ class EditorWindow(tk.Toplevel):
         self.id_item = id_item
         self.codigos_avaria_map = avaria_map
         self.title(f"Editar Item de Garantia - ID: {id_item}")
-        self.geometry("700x450")
+        self.geometry("700x400") # Altura pode ser reduzida
         self.transient(parent)
         self.grab_set()
         form_frame = ttk.LabelFrame(self, text="Dados da Análise", padding=15)
@@ -672,12 +815,13 @@ class EditorWindow(tk.Toplevel):
         ttk.Label(form_frame, text="Fornecedor:").grid(row=3, column=2, padx=5, pady=5, sticky="w")
         self.fornecedor_entry = ttk.Entry(form_frame)
         self.fornecedor_entry.grid(row=3, column=3, padx=5, pady=5, sticky="ew")
-        ttk.Label(form_frame, text="Ressarcimento:").grid(row=4, column=0, padx=5, pady=5, sticky="w")
-        self.ressarcimento_entry = ttk.Entry(form_frame)
-        self.ressarcimento_entry.grid(row=4, column=1, padx=5, pady=5, sticky="ew")
+        
+        # Campo de Ressarcimento REMOVIDO
+        
         save_btn = ttk.Button(form_frame, text="Salvar Alterações", command=self.salvar_edicao, bootstyle="primary")
-        save_btn.grid(row=5, column=3, padx=5, pady=20, sticky="e")
+        save_btn.grid(row=4, column=3, padx=5, pady=20, sticky="e") # Linha ajustada para 4
         self.carregar_dados_item()
+
     def carregar_dados_item(self):
         item_data = db_manager.buscar_detalhes_completos_item(self.id_item)
         if not item_data: Messagebox.show_error("Não foi possível carregar os dados do item.", "Erro"); self.destroy(); return
@@ -689,8 +833,9 @@ class EditorWindow(tk.Toplevel):
         self.avaria_combo.set(item_data['codigo_avaria'] or '')
         self.origem_combo.set(item_data['produzido_revenda'] or '')
         self.fornecedor_entry.insert(0, item_data['fornecedor'] or '')
-        self.ressarcimento_entry.insert(0, item_data['ressarcimento'] or '')
+        # Linha que preenchia o ressarcimento foi REMOVIDA
         self.atualizar_status()
+
     def atualizar_status(self, event=None):
         cod_avaria = self.avaria_combo.get()
         info = self.codigos_avaria_map.get(cod_avaria, {})
@@ -700,9 +845,19 @@ class EditorWindow(tk.Toplevel):
         self.desc_avaria_entry.insert(0, info.get('descricao', ''))
         self.desc_avaria_entry.config(state="readonly")
         self.status_label.config(text=f"Status: {classificacao}", bootstyle="success" if classificacao == "Procedente" else "danger" if classificacao == "Improcedente" else "default")
+
     def salvar_edicao(self):
         cod_avaria = self.avaria_combo.get()
-        dados = {'codigo_analise': self.cod_entry.get(),'numero_serie': self.serie_entry.get(),'codigo_avaria': cod_avaria,'descricao_avaria': self.desc_avaria_entry.get(),'procedente_improcedente': self.codigos_avaria_map.get(cod_avaria, {}).get('classificacao'),'produzido_revenda': self.origem_combo.get(),'fornecedor': self.fornecedor_entry.get(),'ressarcimento': self.ressarcimento_entry.get()}
+        # 'ressarcimento' foi REMOVIDO do dicionário
+        dados = {
+            'codigo_analise': self.cod_entry.get(),
+            'numero_serie': self.serie_entry.get(),
+            'codigo_avaria': cod_avaria,
+            'descricao_avaria': self.desc_avaria_entry.get(),
+            'procedente_improcedente': self.codigos_avaria_map.get(cod_avaria, {}).get('classificacao'),
+            'produzido_revenda': self.origem_combo.get(),
+            'fornecedor': self.fornecedor_entry.get()
+        }
         sucesso, msg = db_manager.salvar_analise_item(self.id_item, dados)
         if sucesso: 
             Messagebox.show_info("Alterações guardadas com sucesso!", "Sucesso")
