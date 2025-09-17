@@ -24,7 +24,7 @@ def buscar_dados_existentes(conn):
         
     return clientes, produtos, avarias
 
-def gerar_dados_falsos(num_notas=20):
+def gerar_dados_falsos(num_notas=10):
     """Gera e insere dados falsos no banco de dados para fins de teste."""
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
@@ -141,4 +141,4 @@ def gerar_dados_falsos(num_notas=20):
     print("="*40)
 
 if __name__ == "__main__":
-    gerar_dados_falsos(num_notas=20) # Aumentei para 150 para ter mais dados
+    gerar_dados_falsos(num_notas=10) # Aumentei para 150 para ter mais dados

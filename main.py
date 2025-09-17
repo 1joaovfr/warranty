@@ -349,21 +349,61 @@ class App(ttkb.Window):
         elif classificacao == "Improcedente": self.analise_status_label.config(bootstyle="danger")
         else: self.analise_status_label.config(bootstyle="default")
 
-
     def salvar_analise(self):
-        if not self.id_item_selecionado: return
-        cod_avaria_selecionado = self.analise_avaria_combo.get()
-        if not cod_avaria_selecionado:
-            Messagebox.show_error("Selecione um código de avaria.", "Erro de Validação")
+        if not self.id_item_selecionado:
             return
+
+        # --- NOVA VALIDAÇÃO DE CAMPOS OBRIGATÓRIOS ---
+        numero_serie = self.analise_serie_entry.get().strip()
+        cod_avaria = self.analise_avaria_combo.get()
+        origem = self.analise_origem_combo.get()
+        fornecedor = self.analise_fornecedor_entry.get().strip()
+
+        if not numero_serie:
+            Messagebox.show_error("O campo 'Nº de Série' é obrigatório.", "Erro de Validação")
+            return
+
+        if not cod_avaria:
+            Messagebox.show_error("O campo 'Cód. Avaria' é obrigatório.", "Erro de Validação")
+            return
+
+        if not origem:
+            Messagebox.show_error("O campo 'Origem' é obrigatório.", "Erro de Validação")
+            return
+
+        if not fornecedor:
+            Messagebox.show_error("O campo 'Fornecedor' é obrigatório.", "Erro de Validação")
+            return
+        # --- FIM DA VALIDAÇÃO ---
+
+        dados = {
+            'codigo_analise': self.analise_cod_entry.get(), 
+            'numero_serie': numero_serie, 
+            'codigo_avaria': cod_avaria, 
+            'descricao_avaria': self.analise_desc_avaria_entry.get(), 
+            'procedente_improcedente': self.codigos_avaria_map.get(cod_avaria, {}).get('classificacao'), 
+            'produzido_revenda': origem, 
+            'fornecedor': fornecedor
+        }
+        
+        sucesso, msg = db_manager.salvar_analise_item(self.id_item_selecionado, dados)
+        if sucesso:
+            Messagebox.show_info(msg, "Sucesso")
+            self.limpar_form_analise()
+            self.carregar_itens_pendentes()
+            self.aplicar_filtros()
+            self._atualizar_aba_gestao()
+        else:
+            Messagebox.show_error(msg, "Erro")
+
         
         # O campo 'ressarcimento' foi removido do dicionário de dados
         dados = {
             'codigo_analise': self.analise_cod_entry.get(), 
             'numero_serie': self.analise_serie_entry.get(), 
-            'codigo_avaria': cod_avaria_selecionado, 
+            'codigo_avaria': cod_avaria, 
             'descricao_avaria': self.analise_desc_avaria_entry.get(), 
-            'procedente_improcedente': self.codigos_avaria_map.get(cod_avaria_selecionado, {}).get('classificacao'), 
+            'procedente_improcedente': self.codigos_avaria_map.get(cod_avaria, {}).get('classificacao'), 
             'produzido_revenda': self.analise_origem_combo.get(), 
             'fornecedor': self.analise_fornecedor_entry.get()
         }
@@ -403,6 +443,8 @@ class App(ttkb.Window):
         self.analise_status_label.config(text="Status: -", bootstyle="default")
         self.set_form_analise_state("disabled")
 
+# main.py
+
     def _criar_widgets_visualizacao(self, parent_tab):
         filtros_frame = ttk.LabelFrame(parent_tab, text="Filtros de Pesquisa", padding=15)
         filtros_frame.pack(fill=X, pady=(0, 10))
@@ -428,12 +470,24 @@ class App(ttkb.Window):
         self.btn_limpar_filtros.pack(fill=X, pady=2, ipady=4)
         lista_geral_frame = ttk.LabelFrame(parent_tab, text="Registos de Garantia", padding=15)
         lista_geral_frame.pack(fill=BOTH, expand=YES)
-        cols = ("id", "nota", "data", "cnpj", "cliente", "analise", "produto", "valor", "status", "procedencia")
+
+        # Adicionada a coluna 'ressarcimento'
+        cols = ("id", "nota", "data", "cnpj", "cliente", "analise", "produto", "valor", "status", "procedencia", "ressarcimento")
         self.tree_visualizacao = ttk.Treeview(lista_geral_frame, columns=cols, show="headings", selectmode="extended")
-        headings = { "id": ("ID", 40), "nota": ("Nº Nota", 80), "data": ("Data", 80), "cnpj": ("CNPJ", 110), "cliente": ("Cliente", 180), "analise": ("Cód. Análise", 100), "produto": ("Cód. Produto", 100), "valor": ("Valor", 80), "status": ("Status", 120), "procedencia": ("Procedência", 100)}
+        
+        headings = { 
+            "id": ("ID", 40), "nota": ("Nº Nota", 80), "data": ("Data", 80), 
+            "cnpj": ("CNPJ", 110), "cliente": ("Cliente", 180), 
+            "analise": ("Cód. Análise", 100), "produto": ("Cód. Produto", 100), 
+            "valor": ("Valor", 80), "status": ("Status", 120), 
+            "procedencia": ("Procedência", 100),
+            "ressarcimento": ("Ressarcimento", 100) # NOVA COLUNA
+        }
+
         for col, (text, width) in headings.items():
             self.tree_visualizacao.heading(col, text=text)
             self.tree_visualizacao.column(col, width=width, anchor=CENTER)
+        
         v_scroll = ttk.Scrollbar(lista_geral_frame, orient=VERTICAL, command=self.tree_visualizacao.yview)
         h_scroll = ttk.Scrollbar(lista_geral_frame, orient=HORIZONTAL, command=self.tree_visualizacao.xview)
         self.tree_visualizacao.configure(yscrollcommand=v_scroll.set, xscrollcommand=h_scroll.set)
@@ -447,6 +501,8 @@ class App(ttkb.Window):
         self.btn_editar = ttk.Button(acoes_vis_frame, text="Editar Selecionado", command=self.editar_item_selecionado, bootstyle="info")
         self.btn_editar.pack(side=RIGHT, padx=5)
 
+# main.py
+
     def aplicar_filtros(self):
         filtros = { 'cnpj': self.filtro_cnpj.get().strip(), 'razao_social': self.filtro_razao.get().strip(), 'numero_nota': self.filtro_nota.get().strip(), 'status': self.filtro_status.get() }
         for i in self.tree_visualizacao.get_children(): self.tree_visualizacao.delete(i)
@@ -456,8 +512,25 @@ class App(ttkb.Window):
             codigo_analise = item['codigo_analise'] or '-'
             procedencia = item['procedente_improcedente'] or '-'
             valor_str = f"R$ {item['valor_item']:.2f}" if item['valor_item'] is not None else '-'
-            self.tree_visualizacao.insert("", END, values=(item['id'], item['numero_nota'], data_formatada, item['cnpj'], item['nome_cliente'], codigo_analise, item['codigo_produto'], valor_str, item['status'], procedencia))
+
+            # --- LÓGICA DE FORMATAÇÃO PARA RESSARCIMENTO ---
+            ressarcimento_val = item['ressarcimento']
+            ressarcimento_str = "-"
+            if ressarcimento_val:
+                try:
+                    valor_float = float(ressarcimento_val)
+                    ressarcimento_str = f"R$ {valor_float:.2f}"
+                except (ValueError, TypeError):
+                    pass
             
+            # Adicionado o novo valor na tupla
+            self.tree_visualizacao.insert("", END, values=(
+                item['id'], item['numero_nota'], data_formatada, 
+                item['cnpj'], item['nome_cliente'], codigo_analise, 
+                item['codigo_produto'], valor_str, item['status'], 
+                procedencia, ressarcimento_str
+            ))
+
     def limpar_filtros(self):
         self.filtro_cnpj.delete(0, END); self.filtro_razao.delete(0, END); self.filtro_nota.delete(0, END); self.filtro_status.set("Todos"); self.aplicar_filtros()
 
@@ -545,18 +618,24 @@ class App(ttkb.Window):
         self._criar_dashboard_ressarcimento(self.frame_dashboard_ressarcimento_gestao)
         self._mostrar_view_tabela()
 
+    # main.py
+
     def _criar_tabela_gestao(self, parent_frame):
+        # Adicionadas as colunas 'num_serie' e 'fornecedor'
         cols = ('id', 'data_lanc', 'num_nota', 'data_nota', 'cnpj', 'cliente', 'grupo_cliente', 
-                'cod_analise', 'cod_produto', 'grupo_estoque', 'cod_avaria', 'valor', 'status', 'procedencia', 'ressarcimento')
+                'cod_analise', 'cod_produto', 'grupo_estoque', 'cod_avaria', 'valor', 'status', 
+                'procedencia', 'ressarcimento', 'num_serie', 'fornecedor')
         self.tree_gestao = ttk.Treeview(parent_frame, columns=cols, show='headings')
         
         headings = {
             'id': ('ID', 40), 'data_lanc': ('Data Lanç', 90), 'num_nota': ('Nº Nota', 80),
-            'data_nota': ('Data Nota', 90), 'cnpj': ('CNPJ', 110), 'cliente': ('Cliente', 150),
+            'data_nota': ('Data Nota', 90), 'cnpj': ('CNPJ', 110), 'cliente': ('Cliente', 200),
             'grupo_cliente': ('Grupo Cliente', 100), 'cod_analise': ('Cód. Análise', 90),
-            'cod_produto': ('Cód. Produto', 90), 'grupo_estoque': ('Grupo Estoque', 100),
+            'cod_produto': ('Cód. Produto', 90), 'grupo_estoque': ('Grupo Estoque', 110),
             'cod_avaria': ('Cód. Avaria', 80), 'valor': ('Valor', 80), 'status': ('Status', 110),
-            'procedencia': ('Procedência', 100), 'ressarcimento': ('Ressarcimento', 100)
+            'procedencia': ('Procedência', 100), 'ressarcimento': ('Ressarcimento', 100),
+            'num_serie': ('Nº Série', 80),      # NOVA COLUNA
+            'fornecedor': ('Fornecedor', 120)  # NOVA COLUNA
         }
         for col, (text, width) in headings.items():
             self.tree_gestao.heading(col, text=text)
@@ -692,6 +771,9 @@ class App(ttkb.Window):
         self._desenhar_grafico_geral_e_stats(filtros)
         self._desenhar_grafico_ressarcimento(filtros)
 
+
+# main.py
+
     def _carregar_dados_tabela_gestao(self, filtros):
         for i in self.tree_gestao.get_children(): self.tree_gestao.delete(i)
         dados = db_manager.buscar_dados_completos_para_gestao(filtros)
@@ -699,9 +781,29 @@ class App(ttkb.Window):
             data_lanc = datetime.strptime(item['data_lancamento'], '%Y-%m-%d').strftime('%d/%m/%Y') if item['data_lancamento'] else '-'
             data_nota = datetime.strptime(item['data_nota'], '%Y-%m-%d').strftime('%d/%m/%Y') if item['data_nota'] else '-'
             valor = f"R$ {item['valor_item']:.2f}" if item['valor_item'] is not None else '-'
-            self.tree_gestao.insert('', END, values=(item['id'], data_lanc, item['numero_nota'], data_nota, item['cnpj'] or '-', item['nome_cliente'] or '-', item['grupo_cliente'] or '-', item['codigo_analise'] or '-', item['codigo_produto'] or '-', item['grupo_estoque'] or '-', item['codigo_avaria'] or '-', valor, item['status'] or '-', item['procedente_improcedente'] or '-', item['ressarcimento'] or '-'))
             
-# main.py
+            # --- LÓGICA DE FORMATAÇÃO ADICIONADA AQUI ---
+            ressarcimento_val = item['ressarcimento']
+            ressarcimento_str = "-"
+            if ressarcimento_val:
+                try:
+                    # Converte para float e formata como moeda
+                    valor_float = float(ressarcimento_val)
+                    ressarcimento_str = f"R$ {valor_float:.2f}"
+                except (ValueError, TypeError):
+                    # Se a conversão falhar, mantém o "-"
+                    pass
+            
+            self.tree_gestao.insert('', END, values=(
+                item['id'], data_lanc, item['numero_nota'], data_nota, 
+                item['cnpj'] or '-', item['nome_cliente'] or '-', item['grupo_cliente'] or '-', 
+                item['codigo_analise'] or '-', item['codigo_produto'] or '-', item['grupo_estoque'] or '-', 
+                item['codigo_avaria'] or '-', valor, item['status'] or '-', 
+                item['procedente_improcedente'] or '-', 
+                ressarcimento_str, # Usa a variável formatada
+                item['numero_serie'] or '-',
+                item['fornecedor'] or '-'
+            ))
 
     def _desenhar_grafico_geral_e_stats(self, filtros):
         for widget in self.frame_grafico_geral_canvas.winfo_children():
@@ -762,7 +864,7 @@ class App(ttkb.Window):
         self.label_ressarc_pend_valor.config(text=f"Valor Potencial: R$ {pend_val:.2f}")
         self.label_total_ressarc_qtd.config(text=f"Quantidade Total: {total_qtd}")
         self.label_total_ressarc_valor.config(text=f"Valor Total: R$ {total_val:.2f}")
-        labels, sizes, colors = ['Procedentes', 'Improcedentes', 'Pendentes (Potencial)'], [proc_val, improc_val, pend_val], ['#28a745', '#dc3545', '#ffc107']
+        labels, sizes, colors = ['Procedentes', 'Improcedentes', 'Pendentes'], [proc_val, improc_val, pend_val], ['#28a745', '#dc3545', '#6c757d']
         non_zero_data = [(size, label, color) for size, label, color in zip(sizes, labels, colors) if size > 0]
         
         if not non_zero_data:

@@ -87,6 +87,8 @@ def buscar_itens_pendentes():
         print(f"Erro ao buscar itens pendentes: {e}")
         return []
 
+# db_manager.py
+
 def buscar_garantias_filtradas(filtros):
     try:
         conn = sqlite3.connect(DB_NAME)
@@ -96,7 +98,8 @@ def buscar_garantias_filtradas(filtros):
             SELECT 
                 ig.id, nf.numero_nota, nf.data_nota, c.cnpj, c.nome_cliente,
                 ig.codigo_analise, ig.codigo_produto, ig.status, 
-                ig.procedente_improcedente, ig.valor_item
+                ig.procedente_improcedente, ig.valor_item,
+                ig.ressarcimento -- CAMPO ADICIONADO
             FROM ItensGarantia ig
             JOIN NotasFiscais nf ON ig.id_nota_fiscal = nf.id
             JOIN Clientes c ON nf.cnpj_cliente = c.cnpj
@@ -130,6 +133,7 @@ def buscar_garantias_filtradas(filtros):
     except sqlite3.Error as e:
         print(f"Erro ao buscar garantias filtradas: {e}")
         return []
+
 
 def buscar_detalhes_completos_item(id_item):
     try:
@@ -216,7 +220,8 @@ def obter_codigos_produtos():
         print(f"Erro ao obter códigos de produtos: {e}")
         return []
 
-# --- FUNÇÃO ATUALIZADA PARA ACEITAR MAIS FILTROS ---
+# db_manager.py
+
 def buscar_dados_completos_para_gestao(filtros={}):
     try:
         conn = sqlite3.connect(DB_NAME)
@@ -229,7 +234,9 @@ def buscar_dados_completos_para_gestao(filtros={}):
                 c.cnpj, c.nome_cliente, c.grupo_cliente,
                 ig.codigo_analise, ig.codigo_produto, p.grupo_estoque,
                 ig.codigo_avaria, ig.valor_item, ig.status, 
-                ig.procedente_improcedente, ig.ressarcimento
+                ig.procedente_improcedente, ig.ressarcimento,
+                ig.numero_serie, -- CAMPO ADICIONADO
+                ig.fornecedor    -- CAMPO ADICIONADO
             FROM ItensGarantia AS ig
             LEFT JOIN NotasFiscais AS nf ON ig.id_nota_fiscal = nf.id
             LEFT JOIN Clientes AS c ON nf.cnpj_cliente = c.cnpj
@@ -264,7 +271,6 @@ def buscar_dados_completos_para_gestao(filtros={}):
     except sqlite3.Error as e:
         print(f"Erro ao buscar dados para gestão: {e}")
         return []
-
 
 # --- FUNÇÃO ATUALIZADA PARA ACEITAR MAIS FILTROS ---
 def obter_estatisticas_garantia(filtros={}):
@@ -320,11 +326,8 @@ def obter_estatisticas_garantia(filtros={}):
         return {}
 
 # --- FUNÇÃO ATUALIZADA PARA ACEITAR MAIS FILTROS ---
-# db_manager.py
 
-# ... (início do arquivo sem alterações) ...
 
-# --- FUNÇÃO ATUALIZADA PARA ACEITAR MAIS FILTROS ---
 def obter_estatisticas_ressarcimento(filtros={}):
     try:
         conn = sqlite3.connect(DB_NAME)
@@ -333,8 +336,9 @@ def obter_estatisticas_ressarcimento(filtros={}):
 
         base_from = "FROM ItensGarantia ig JOIN NotasFiscais nf ON ig.id_nota_fiscal = nf.id LEFT JOIN Clientes c ON nf.cnpj_cliente = c.cnpj"
 
-        condicoes = []
+        condicoes = ["ig.ressarcimento IS NOT NULL", "CAST(ig.ressarcimento AS REAL) > 0"]
         params = []
+
         if filtros.get('ano'):
             condicoes.append("STRFTIME('%Y', nf.data_lancamento) = ?")
             params.append(filtros['ano'])
@@ -348,18 +352,18 @@ def obter_estatisticas_ressarcimento(filtros={}):
             condicoes.append("ig.codigo_produto = ?")
             params.append(filtros['produto'])
             
-        where_sql = " WHERE " + " AND ".join(condicoes) if condicoes else ""
+        where_sql = " WHERE " + " AND ".join(condicoes)
         
         query = f"""
             SELECT
                 SUM(CASE WHEN ig.procedente_improcedente = 'Procedente' THEN CAST(ig.ressarcimento AS REAL) ELSE 0 END) as valor_procedente,
-                -- ALTERAÇÃO APLICADA AQUI: Adiciona a condição para contar apenas se o ressarcimento for maior que 0
                 COUNT(CASE WHEN ig.procedente_improcedente = 'Procedente' AND CAST(ig.ressarcimento AS REAL) > 0 THEN ig.id END) as qtd_procedente,
 
                 SUM(CASE WHEN ig.procedente_improcedente = 'Improcedente' THEN CAST(ig.ressarcimento AS REAL) ELSE 0 END) as valor_improcedente,
                 COUNT(CASE WHEN ig.procedente_improcedente = 'Improcedente' THEN ig.id END) as qtd_improcedente,
 
-                SUM(CASE WHEN ig.status = 'Pendente de Análise' THEN ig.valor_item ELSE 0 END) as valor_pendente,
+                -- ALTERAÇÃO AQUI: Mudado de ig.valor_item para ig.ressarcimento
+                SUM(CASE WHEN ig.status = 'Pendente de Análise' THEN CAST(ig.ressarcimento AS REAL) ELSE 0 END) as valor_pendente,
                 COUNT(CASE WHEN ig.status = 'Pendente de Análise' THEN ig.id END) as qtd_pendente
             {base_from}
             {where_sql}
@@ -378,12 +382,11 @@ def obter_estatisticas_ressarcimento(filtros={}):
     except sqlite3.Error as e:
         print(f"Erro ao obter estatísticas de ressarcimento: {e}")
         return {'Procedente': {'quantidade': 0, 'valor_total': 0}, 'Improcedente': {'quantidade': 0, 'valor_total': 0}, 'Pendente': {'quantidade': 0, 'valor_total': 0}}
-    
+
 # =================================================================================
 # --- FUNÇÕES DE ESCRITA ---
 # =================================================================================
 
-# db_manager.py
 
 def salvar_nota_e_itens(cnpj, numero_nota, data_nota, itens):
     try:
@@ -423,7 +426,6 @@ def salvar_nota_e_itens(cnpj, numero_nota, data_nota, itens):
         print(f"Erro ao salvar nota fiscal: {e}")
         return False, f"Erro ao salvar nota fiscal: {e}"
 
-# db_manager.py
 
 def salvar_analise_item(id_item, dados_analise):
     try:
