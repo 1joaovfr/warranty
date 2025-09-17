@@ -727,6 +727,7 @@ class App(ttkb.Window):
             return
         sizes, labels, colors = zip(*non_zero_data)
         
+        
         # Reduzindo um pouco o tamanho da figura para melhor encaixe
         fig, ax = plt.subplots(figsize=(6, 6), dpi=100)
         fig.patch.set_facecolor('#ffffff')
