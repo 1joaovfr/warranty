@@ -231,12 +231,13 @@ class App(ttkb.Window):
         except (AttributeError, tk.TclError):
             pass
 
+# main.py
 
     def _criar_widgets_analise(self, parent_tab):
-        # ... (código do 'lista_frame' e 'tree_analise' continua igual) ...
         lista_frame = ttk.LabelFrame(parent_tab, text="Itens Pendentes de Análise", padding=15)
         lista_frame.pack(fill=X, pady=(0, 10))
-        cols = ("id", "analise", "nota", "cliente", "produto", "data")
+        # Adicionada a coluna 'ressarcimento'
+        cols = ("id", "analise", "nota", "cliente", "produto", "data", "ressarcimento")
         self.tree_analise = ttk.Treeview(lista_frame, columns=cols, show="headings", height=12)
         self.tree_analise.heading("id", text="ID")
         self.tree_analise.heading("analise", text="Cód. Análise")
@@ -244,18 +245,21 @@ class App(ttkb.Window):
         self.tree_analise.heading("cliente", text="Cliente")
         self.tree_analise.heading("produto", text="Cód. Produto")
         self.tree_analise.heading("data", text="Data Nota")
+        self.tree_analise.heading("ressarcimento", text="Ressarcimento") # Novo heading
+        
         self.tree_analise.column("id", width=50, anchor=CENTER)
         self.tree_analise.column("analise", width=100, anchor=CENTER)
         self.tree_analise.column("nota", width=80, anchor=CENTER)
         self.tree_analise.column("cliente", width=250, anchor=CENTER)
         self.tree_analise.column("produto", width=120, anchor=CENTER)
         self.tree_analise.column("data", width=100, anchor=CENTER)
+        self.tree_analise.column("ressarcimento", width=100, anchor=CENTER) # Novas propriedades da coluna
+
         v_scroll = ttk.Scrollbar(lista_frame, orient=VERTICAL, command=self.tree_analise.yview)
         self.tree_analise.configure(yscrollcommand=v_scroll.set)
         v_scroll.pack(side=RIGHT, fill=Y)
         self.tree_analise.pack(side=LEFT, fill=BOTH, expand=YES)
         self.tree_analise.bind("<<TreeviewSelect>>", self.on_item_analise_select)
-
         self.form_analise_frame = ttk.LabelFrame(parent_tab, text="Formulário de Análise", padding=15)
         self.form_analise_frame.pack(fill=BOTH, expand=YES)
         self.form_analise_frame.columnconfigure(1, weight=1); self.form_analise_frame.columnconfigure(3, weight=1)
@@ -280,19 +284,42 @@ class App(ttkb.Window):
         ttk.Label(self.form_analise_frame, text="Fornecedor:").grid(row=3, column=2, padx=5, pady=5, sticky="w")
         self.analise_fornecedor_entry = ttk.Entry(self.form_analise_frame)
         self.analise_fornecedor_entry.grid(row=3, column=3, padx=5, pady=5, sticky="ew")
-        
-        # --- CAMPO DE RESSARCIMENTO REMOVIDO DAQUI ---
-
         self.save_analise_button = ttk.Button(self.form_analise_frame, text="Guardar Análise", command=self.salvar_analise, bootstyle="primary")
-        self.save_analise_button.grid(row=4, column=3, padx=5, pady=20, sticky="e") # A linha (row) foi ajustada para 4
+        self.save_analise_button.grid(row=4, column=3, padx=5, pady=20, sticky="e")
         self.set_form_analise_state("disabled")
+
 
     def carregar_itens_pendentes(self):
         for i in self.tree_analise.get_children(): self.tree_analise.delete(i)
         itens = db_manager.buscar_itens_pendentes()
         for item in itens:
             data_formatada = datetime.strptime(item['data_nota'], '%Y-%m-%d').strftime('%d/%m/%Y')
-            self.tree_analise.insert("", END, values=(item['id'], item['codigo_analise'], item['numero_nota'], item['nome_cliente'], item['codigo_produto'], data_formatada))
+            
+            # --- ALTERAÇÃO APLICADA AQUI ---
+            # Pega o valor do ressarcimento (que é uma string ou None)
+            valor_ressarcimento = item['ressarcimento']
+            ressarcimento_str = "-" # Valor padrão para exibição
+
+            # Se o valor não for nulo ou vazio, tenta convertê-lo para float
+            if valor_ressarcimento:
+                try:
+                    # Converte a string para float antes de formatar
+                    valor_float = float(valor_ressarcimento)
+                    ressarcimento_str = f"R$ {valor_float:.2f}"
+                except (ValueError, TypeError):
+                    # Se a conversão falhar, mantém o valor padrão "-"
+                    pass
+            
+            # Adiciona o valor formatado ao inserir na tabela
+            self.tree_analise.insert("", END, values=(
+                item['id'], 
+                item['codigo_analise'], 
+                item['numero_nota'], 
+                item['nome_cliente'], 
+                item['codigo_produto'], 
+                data_formatada,
+                ressarcimento_str
+            ))
 
     def on_item_analise_select(self, event=None):
         selecionado = self.tree_analise.focus()
@@ -307,7 +334,7 @@ class App(ttkb.Window):
         self.analise_cod_entry.config(state="readonly")
         self.form_analise_frame.config(text=f"Formulário de Análise - Item ID: {self.id_item_selecionado}")
         self.set_form_analise_state("normal")
-        
+
     def atualizar_status_procedencia(self, event=None):
         cod_avaria = self.analise_avaria_combo.get()
         if not cod_avaria: return
@@ -542,11 +569,24 @@ class App(ttkb.Window):
         h_scroll.pack(side=BOTTOM, fill=X)
         self.tree_gestao.pack(fill=BOTH, expand=YES)
 
+# main.py
+
     def _criar_dashboard_geral(self, parent_frame):
+        parent_frame.columnconfigure(0, weight=1) 
+        parent_frame.columnconfigure(1, weight=0)
+        parent_frame.rowconfigure(0, weight=1)
+
         self.frame_grafico_geral_canvas = ttk.LabelFrame(parent_frame, text="Distribuição de Status (Geral)", padding=15)
-        self.frame_grafico_geral_canvas.pack(side=LEFT, fill=BOTH, expand=YES, padx=(0, 10))
-        stats_frame = ttk.LabelFrame(parent_frame, text="Resumo de Valores e Quantidades (Geral)", padding=15)
-        stats_frame.pack(side=RIGHT, fill=Y, ipadx=10)
+        self.frame_grafico_geral_canvas.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+
+        # --- ALTERAÇÕES AQUI ---
+        # 1. Definida uma largura fixa de 350 pixels
+        stats_frame = ttk.LabelFrame(parent_frame, text="Resumo de Valores e Quantidades (Geral)", padding=15, width=350)
+        stats_frame.grid(row=0, column=1, sticky="ns")
+        # 2. Impede que os widgets internos alterem o tamanho do frame
+        stats_frame.pack_propagate(False)
+        
+        # O conteúdo do stats_frame continua o mesmo
         ttk.Label(stats_frame, text="Procedentes", font=("Helvetica", 12, "bold"), foreground="#28a745").pack(anchor='w', pady=(0, 5))
         self.label_procedente_qtd = ttk.Label(stats_frame, text="Quantidade: -")
         self.label_procedente_qtd.pack(anchor='w', padx=10)
@@ -569,39 +609,39 @@ class App(ttkb.Window):
         self.label_total_valor = ttk.Label(stats_frame, text="Valor Total: R$ -")
         self.label_total_valor.pack(anchor='w', padx=10)
 
-# main.py
-
-# ... (início do arquivo) ...
+    # main.py
 
     def _criar_dashboard_ressarcimento(self, parent_frame):
-        self.frame_grafico_ressarcimento_canvas = ttk.LabelFrame(parent_frame, text="Distribuição de Ressarcimentos por Valor", padding=15)
-        self.frame_grafico_ressarcimento_canvas.pack(side=LEFT, fill=BOTH, expand=YES, padx=(0, 10))
-        
-        stats_frame = ttk.LabelFrame(parent_frame, text="Resumo de Valores de Ressarcimento", padding=15)
-        stats_frame.pack(side=RIGHT, fill=Y, ipadx=10)
+        parent_frame.columnconfigure(0, weight=1)
+        parent_frame.columnconfigure(1, weight=0)
+        parent_frame.rowconfigure(0, weight=1)
 
-        # --- Procedentes ---
+        self.frame_grafico_ressarcimento_canvas = ttk.LabelFrame(parent_frame, text="Distribuição de Ressarcimentos por Valor", padding=15)
+        self.frame_grafico_ressarcimento_canvas.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        
+        # --- ALTERAÇÕES AQUI ---
+        # 1. Definida a MESMA largura fixa de 350 pixels
+        stats_frame = ttk.LabelFrame(parent_frame, text="Resumo de Valores de Ressarcimento", padding=15, width=350)
+        stats_frame.grid(row=0, column=1, sticky="ns")
+        # 2. Impede que os widgets internos alterem o tamanho do frame
+        stats_frame.pack_propagate(False)
+
+        # O conteúdo do stats_frame continua o mesmo
         ttk.Label(stats_frame, text="Procedentes", font=("Helvetica", 12, "bold"), foreground="#28a745").pack(anchor='w', pady=(0, 5))
         self.label_ressarc_proc_qtd = ttk.Label(stats_frame, text="Quantidade: -")
         self.label_ressarc_proc_qtd.pack(anchor='w', padx=10)
         self.label_ressarc_proc_valor = ttk.Label(stats_frame, text="Valor Total: R$ -")
         self.label_ressarc_proc_valor.pack(anchor='w', padx=10, pady=(0, 15))
-
-        # --- Improcedentes ---
         ttk.Label(stats_frame, text="Improcedentes", font=("Helvetica", 12, "bold"), foreground="#dc3545").pack(anchor='w', pady=(0, 5))
         self.label_ressarc_improc_qtd = ttk.Label(stats_frame, text="Quantidade: -")
         self.label_ressarc_improc_qtd.pack(anchor='w', padx=10)
         self.label_ressarc_improc_valor = ttk.Label(stats_frame, text="Valor Total: R$ -")
         self.label_ressarc_improc_valor.pack(anchor='w', padx=10, pady=(0, 15))
-
-        # --- Pendentes ---
         ttk.Label(stats_frame, text="Pendentes de Análise", font=("Helvetica", 12, "bold"), foreground="#6c757d").pack(anchor='w', pady=(0, 5))
         self.label_ressarc_pend_qtd = ttk.Label(stats_frame, text="Quantidade: -")
         self.label_ressarc_pend_qtd.pack(anchor='w', padx=10)
         self.label_ressarc_pend_valor = ttk.Label(stats_frame, text="Valor Potencial: R$ -")
         self.label_ressarc_pend_valor.pack(anchor='w', padx=10, pady=(0, 15))
-
-        # --- Separador e Totais ---
         ttk.Separator(stats_frame, orient=HORIZONTAL).pack(fill=X, pady=10)
         ttk.Label(stats_frame, text="Total Recebido", font=("Helvetica", 12, "bold"), foreground="#17a2b8").pack(anchor='w', pady=(0, 5))
         self.label_total_ressarc_qtd = ttk.Label(stats_frame, text="Quantidade Total: -")
@@ -609,8 +649,6 @@ class App(ttkb.Window):
         self.label_total_ressarc_valor = ttk.Label(stats_frame, text="Valor Total: R$ -")
         self.label_total_ressarc_valor.pack(anchor='w', padx=10)
 
-# ... (restante do arquivo) ...
-# ... (restante do arquivo) ...
     def _mostrar_view_tabela(self):
         self.frame_dashboard_geral_gestao.pack_forget()
         self.frame_dashboard_ressarcimento_gestao.pack_forget()
@@ -663,6 +701,8 @@ class App(ttkb.Window):
             valor = f"R$ {item['valor_item']:.2f}" if item['valor_item'] is not None else '-'
             self.tree_gestao.insert('', END, values=(item['id'], data_lanc, item['numero_nota'], data_nota, item['cnpj'] or '-', item['nome_cliente'] or '-', item['grupo_cliente'] or '-', item['codigo_analise'] or '-', item['codigo_produto'] or '-', item['grupo_estoque'] or '-', item['codigo_avaria'] or '-', valor, item['status'] or '-', item['procedente_improcedente'] or '-', item['ressarcimento'] or '-'))
             
+# main.py
+
     def _desenhar_grafico_geral_e_stats(self, filtros):
         for widget in self.frame_grafico_geral_canvas.winfo_children():
             widget.destroy()
@@ -686,51 +726,42 @@ class App(ttkb.Window):
             ttk.Label(self.frame_grafico_geral_canvas, text="Não há dados para exibir.").pack(pady=20)
             return
         sizes, labels, colors = zip(*non_zero_data)
+        
+        # Reduzindo um pouco o tamanho da figura para melhor encaixe
         fig, ax = plt.subplots(figsize=(6, 6), dpi=100)
-        fig.patch.set_facecolor('#f0f0f0')
+        fig.patch.set_facecolor('#ffffff')
         ax.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90, wedgeprops={'edgecolor': 'white'})
         ax.axis('equal')
+        fig.tight_layout()
+        
         canvas = FigureCanvasTkAgg(fig, master=self.frame_grafico_geral_canvas)
         canvas.draw()
-        canvas.get_tk_widget().pack(fill=BOTH, expand=YES)
         
-# main.py
+        # --- ALTERAÇÃO AQUI ---
+        # Remove 'fill=BOTH' para impedir que o gráfico se estique e deforme
+        canvas.get_tk_widget().pack(expand=YES)
 
-# ... (início do arquivo) ...
+    # main.py
         
     def _desenhar_grafico_ressarcimento(self, filtros):
         for widget in self.frame_grafico_ressarcimento_canvas.winfo_children():
             widget.destroy()
             
         stats = db_manager.obter_estatisticas_ressarcimento(filtros)
-        
-        # Extrai os valores e quantidades
         proc_qtd, proc_val = stats['Procedente']['quantidade'], stats['Procedente']['valor_total']
         improc_qtd, improc_val = stats['Improcedente']['quantidade'], stats['Improcedente']['valor_total']
         pend_qtd, pend_val = stats['Pendente']['quantidade'], stats['Pendente']['valor_total']
-        
-        # Calcula os totais (somente com itens que têm ou podem ter ressarcimento)
-        total_qtd = proc_qtd + pend_qtd # ALTERAÇÃO APLICADA AQUI
+        total_qtd = proc_qtd + pend_qtd
         total_val = proc_val + improc_val + pend_val
-        
-        # Atualiza os labels de resumo
         self.label_ressarc_proc_qtd.config(text=f"Quantidade: {proc_qtd}")
         self.label_ressarc_proc_valor.config(text=f"Valor Total: R$ {proc_val:.2f}")
-        
         self.label_ressarc_improc_qtd.config(text=f"Quantidade: {improc_qtd}")
         self.label_ressarc_improc_valor.config(text=f"Valor Total: R$ {improc_val:.2f}")
-        
         self.label_ressarc_pend_qtd.config(text=f"Quantidade: {pend_qtd}")
         self.label_ressarc_pend_valor.config(text=f"Valor Potencial: R$ {pend_val:.2f}")
-
         self.label_total_ressarc_qtd.config(text=f"Quantidade Total: {total_qtd}")
         self.label_total_ressarc_valor.config(text=f"Valor Total: R$ {total_val:.2f}")
-
-        # Prepara os dados para o gráfico (continua baseado nos VALORES)
-        labels = ['Procedentes', 'Improcedentes', 'Pendentes (Potencial)']
-        sizes = [proc_val, improc_val, pend_val]
-        colors = ['#28a745', '#dc3545', '#ffc107']
-        
+        labels, sizes, colors = ['Procedentes', 'Improcedentes', 'Pendentes (Potencial)'], [proc_val, improc_val, pend_val], ['#28a745', '#dc3545', '#ffc107']
         non_zero_data = [(size, label, color) for size, label, color in zip(sizes, labels, colors) if size > 0]
         
         if not non_zero_data:
@@ -738,15 +769,20 @@ class App(ttkb.Window):
             return
             
         sizes, labels, colors = zip(*non_zero_data)
-        
+
+        # Reduzindo um pouco o tamanho da figura para melhor encaixe
         fig, ax = plt.subplots(figsize=(6, 6), dpi=100)
-        fig.patch.set_facecolor('#f0f0f0')
+        fig.patch.set_facecolor('#ffffff')
         ax.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90, wedgeprops={'edgecolor': 'white'})
         ax.axis('equal')
+        fig.tight_layout()
         
         canvas = FigureCanvasTkAgg(fig, master=self.frame_grafico_ressarcimento_canvas)
         canvas.draw()
-        canvas.get_tk_widget().pack(fill=BOTH, expand=YES)
+        
+        # --- ALTERAÇÃO AQUI ---
+        # Remove 'fill=BOTH' para impedir que o gráfico se estique e deforme
+        canvas.get_tk_widget().pack(expand=YES)
 
 # ... (restante do arquivo) ...
     def _populate_filtros_gestao(self):

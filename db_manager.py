@@ -57,6 +57,8 @@ def buscar_todos_codigos_avaria():
         print(f"Erro ao buscar códigos de avaria: {e}")
         return {}
 
+# db_manager.py
+
 def buscar_itens_pendentes():
     try:
         conn = sqlite3.connect(DB_NAME)
@@ -69,7 +71,8 @@ def buscar_itens_pendentes():
                 nf.numero_nota, 
                 nf.data_nota,
                 c.nome_cliente, 
-                ig.codigo_produto
+                ig.codigo_produto,
+                ig.ressarcimento -- Linha adicionada
             FROM ItensGarantia ig
             JOIN NotasFiscais nf ON ig.id_nota_fiscal = nf.id
             JOIN Clientes c ON nf.cnpj_cliente = c.cnpj
